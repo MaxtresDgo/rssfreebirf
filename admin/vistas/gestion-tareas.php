@@ -43,6 +43,10 @@
                     <input name="rss_limit" id="rss_limit" type="number" value="3" min="1">
                 </div>
                 <div class="flux-form-field">
+                    <label for="rss_hora">Hora de ejecución (por tarea, opcional)</label>
+                    <input name="rss_hora" id="rss_hora" type="time" value="">
+                </div>
+                <div class="flux-form-field">
                     <label for="rss_category_id">Categoría</label>
                     <select name="rss_category_id" id="rss_category_id">
                         <?php
@@ -69,22 +73,7 @@
                         <option value="publish">Publicado</option>
                     </select>
                 </div>
-                <div class="flux-form-field"
-                    style="border-top: 1px solid #eee; padding-top: 15px; grid-column: 1 / -1;">
-                    <label style="color: #0073aa; font-weight: bold;">Configuración Global de Horario (CRON)</label>
-                    <div style="display: flex; gap: 10px; align-items: flex-end; margin-top: 5px;">
-                        <div style="flex-grow: 1;">
-                            <label style="margin-bottom: 2px;">Hora de ejecución diaria (Servidor:
-                                <?= esc_html(wp_timezone()->getName()) ?>)</label>
-                            <input type="time" name="rss_cron_hora"
-                                value="<?= esc_attr(get_option('rss_cron_hora', '07:00')) ?>" required>
-                        </div>
-                        <button type="submit" name="guardar_hora_cron" class="flux-button"
-                            style="margin: 0; padding: 10px 15px; background: var(--secondary);">
-                            Actualizar Hora
-                        </button>
-                    </div>
-                </div>
+                
             </div>
             <div style="margin-top: 20px; text-align: right;">
                 <button type="submit" name="nueva_tarea" class="flux-button" style="width: auto; padding: 12px 30px;">

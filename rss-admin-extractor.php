@@ -45,4 +45,15 @@ function rss_admin_extractor_desactivar_plugin()
 
 add_action('admin_menu', 'rss_admin_extractor_menu');
 
-
+// Parche para forzar og:image en notas automáticas (Bypass para Yoast SEO)
+add_action('wp_head', function() {
+    if (is_single()) {
+        $post_id = get_the_ID();
+        if (has_post_thumbnail($post_id)) {
+            $image_url = get_the_post_thumbnail_url($post_id, 'full');
+            if ($image_url) {
+                echo '<meta property="og:image" content="' . esc_url($image_url) . '" />' . "\n";
+            }
+        }
+    }
+}, 1);

@@ -43,10 +43,20 @@ function rss_admin_extractor_menu()
         'rss-gestionar-fuentes',
         'rss_admin_extractor_gestion_fuentes'
     );
+
+    // 4. Ajustes (API Key)
+    add_submenu_page(
+        'rss-admin-extractor',
+        'Ajustes',
+        'Ajustes',
+        'manage_options',
+        'rss-ajustes',
+        'rss_admin_extractor_ajustes'
+    );
 }
 
 add_action('admin_enqueue_scripts', function ($hook) {
-    if (!strpos($hook, 'rss-admin-extractor') && !strpos($hook, 'rss-gestionar-fuentes') && !strpos($hook, 'rss-listar-tareas'))
+    if (!strpos($hook, 'rss-admin-extractor') && !strpos($hook, 'rss-gestionar-fuentes') && !strpos($hook, 'rss-listar-tareas') && !strpos($hook, 'rss-ajustes'))
         return;
 
     wp_enqueue_style(
@@ -127,6 +137,7 @@ function rss_admin_extractor_gestion_tareas()
                 'nombre_tarea' => sanitize_text_field($_POST['nombre_tarea']),
                 'rss_url' => $fuente->url,
                 'rss_limit' => intval($_POST['rss_limit']),
+                'rss_hora' => isset($_POST['rss_hora']) ? sanitize_text_field($_POST['rss_hora']) : '',
                 'rss_category_id' => intval($_POST['rss_category_id']),
                 'rss_post_status' => sanitize_text_field($_POST['rss_post_status']),
                 'rss_author_id' => intval($_POST['rss_author_id']),
@@ -137,14 +148,7 @@ function rss_admin_extractor_gestion_tareas()
         }
     }
 
-    if (isset($_POST['guardar_hora_cron'])) {
-        check_admin_referer('rss_nueva_tarea_nonce');
-        if (!current_user_can('manage_options'))
-            return;
-
-        update_option('rss_cron_hora', sanitize_text_field($_POST['rss_cron_hora']));
-        echo '<div class="flux-notification flux-success"><div class="flux-notification-content"><h4>Hora Guardada</h4></div></div>';
-    }
+    // Nota: la configuración global de hora CRON ahora se gestiona fuera de este formulario.
 
     $fuentes = $wpdb->get_results("SELECT * FROM $tabla_fuentes");
     include plugin_dir_path(__FILE__) . 'vistas/gestion-tareas.php';
@@ -225,4 +229,23 @@ function rss_admin_extractor_gestion_fuentes()
     }
 
     include plugin_dir_path(__FILE__) . 'vistas/gestion-fuentes.php';
+}
+
+/**
+ * PÁGINA 4: AJUSTES (API Key)
+ */
+function rss_admin_extractor_ajustes()
+{
+    if (isset($_POST['guardar_ajustes'])) {
+        check_admin_referer('rss_ajustes_nonce');
+        if (!current_user_can('manage_options'))
+            return;
+
+        $api_key = sanitize_text_field($_POST['rss_mistral_api_key']);
+        update_option('rss_mistral_api_key', $api_key);
+        echo '<div class="flux-notification flux-success"><div class="flux-notification-content"><h4>Ajustes Guardados</h4><p>La API Key se ha actualizado correctamente.</p></div></div>';
+    }
+
+    $api_key = get_option('rss_mistral_api_key', '');
+    include plugin_dir_path(__FILE__) . 'vistas/ajustes.php';
 }

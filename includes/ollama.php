@@ -14,10 +14,25 @@ if (!defined('OLLAMA_MAX_WORDS_INPUT'))
 @set_time_limit(0);
 
 /* ===========================
+   HELPER: OBTENER API KEY
+=========================== */
+function rss_admin_extractor_get_api_key()
+{
+    $api_key = get_option('rss_mistral_api_key', '');
+    if (empty($api_key)) {
+        error_log('[RSS Extractor] API Key de Mistral no configurada. Ve a RSS Extractor > Ajustes para agregarla.');
+    }
+    return $api_key;
+}
+
+/* ===========================
    REESCRITURA DE TÍTULO
 =========================== */
 function reescribir_titulo_con_ollama($titulo)
 {
+    $api_key = rss_admin_extractor_get_api_key();
+    if (empty($api_key)) return $titulo;
+
     $prompt = "Reescribe el siguiente título periodístico para que sea más atractivo y profesional. " .
         "No menciones nombres de periódicos, sitios web ni autores originales. " .
         "Devuelve únicamente el nuevo título, en español, sin comillas ni explicaciones.\n\n" .
@@ -33,7 +48,7 @@ function reescribir_titulo_con_ollama($titulo)
     $response = wp_remote_post('https://api.mistral.ai/v1/chat/completions', [
         'headers' => [
             'Content-Type' => 'application/json',
-            'Authorization' => 'Bearer mJBPu2uPUp2SM2lJOa22rr6mYNoRBGzL'
+            'Authorization' => 'Bearer ' . $api_key
         ],
         'body' => $body,
         'timeout' => OLLAMA_TIMEOUT_TITULO
@@ -49,7 +64,7 @@ function reescribir_titulo_con_ollama($titulo)
     if (!empty($data['choices'][0]['message']['content'])) {
         $nuevo_titulo = trim($data['choices'][0]['message']['content']);
         // Limpieza profunda: quitamos asteriscos, comillas (normales y curvas) y espacios al inicio/final
-        return preg_replace('/^[\s\*"\'“”‘’]+|[\s\*"\'“”‘’]+$/u', '', $nuevo_titulo);
+        return preg_replace('/^[\s\*"' . "'" . '\x{201C}\x{201D}\x{2018}\x{2019}]+|[\s\*"' . "'" . '\x{201C}\x{201D}\x{2018}\x{2019}]+$/u', '', $nuevo_titulo);
     }
 
     return $titulo;
@@ -60,6 +75,9 @@ function reescribir_titulo_con_ollama($titulo)
 =========================== */
 function reescribir_contenido_con_ollama($contenido)
 {
+    $api_key = rss_admin_extractor_get_api_key();
+    if (empty($api_key)) return $contenido;
+
     $contenido_original_clean = wp_strip_all_tags($contenido);
 
     // Reducimos input para evitar cuelgues
@@ -85,7 +103,7 @@ function reescribir_contenido_con_ollama($contenido)
     $response = wp_remote_post('https://api.mistral.ai/v1/chat/completions', [
         'headers' => [
             'Content-Type' => 'application/json',
-            'Authorization' => 'Bearer mJBPu2uPUp2SM2lJOa22rr6mYNoRBGzL'
+            'Authorization' => 'Bearer ' . $api_key
         ],
         'body' => $body,
         'timeout' => OLLAMA_TIMEOUT_CONTENIDO

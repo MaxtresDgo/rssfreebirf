@@ -13,6 +13,7 @@ function rss_admin_extractor_instalar()
         rss_url TEXT NOT NULL,
         rss_limit INT DEFAULT 3,
         rss_category_id INT,
+        rss_hora VARCHAR(5) DEFAULT '',
         rss_post_status VARCHAR(20) DEFAULT 'draft',
         rss_author_id BIGINT DEFAULT 0,
         periodico VARCHAR(255) DEFAULT '',

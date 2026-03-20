@@ -66,6 +66,14 @@
                                     class="flux-task-value">
                                     <?= esc_html($tarea->rss_limit) ?>
                                 </span></div>
+                            <div class="flux-task-detail"><span class="flux-task-label">Hora:</span><span
+                                    class="flux-task-value">
+                                    <?php if (!empty($tarea->rss_hora)): ?>
+                                        <?= esc_html($tarea->rss_hora) ?>
+                                    <?php else: ?>
+                                        <?= esc_html(get_option('rss_cron_hora', '07:00')) ?> (global)
+                                    <?php endif; ?>
+                                </span></div>
                         </div>
                         <div class="flux-task-actions">
                             <a href="?page=rss-listar-tareas&eliminar=<?= intval($tarea->id) ?>"

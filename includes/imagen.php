@@ -17,7 +17,6 @@ function asignar_imagen_destacada($imagen_url, $post_id)
         $base = $path ? basename($path) : 'imagen';
         $base = preg_replace('/\?.*$/', '', $base);
         $base = preg_replace('/[^A-Za-z0-9_\-\.]/', '-', $base);
-
         $map = [
             'image/jpeg' => 'jpg',
             'image/jpg' => 'jpg',
@@ -25,101 +24,113 @@ function asignar_imagen_destacada($imagen_url, $post_id)
             'image/gif' => 'gif',
             'image/webp' => 'webp',
             'image/bmp' => 'bmp',
-            'image/svg+xml' => 'svg',
+            'image/svg+xml' => 'svg'
         ];
-        $ext = isset($map[strtolower($mime)]) ? $map[strtolower($mime)] : null;
-
+        $ext = isset($map[strtolower($mime)]) ? $map[strtolower($mime)] : 'jpg';
         if (!preg_match('/\.(jpe?g|png|gif|webp|bmp|svg)$/i', $base)) {
-            $base .= $ext ? ('.' . $ext) : '.jpg';
+            $base .= '.' . $ext;
         }
         return $base;
     };
 
-    // --- 1) Intento con download_url() ---
-    $tmp = download_url($imagen_url);
-    $tmp_ok = true;
+    $tmp = false;
+    $tmp_ok = false;
+    $info = false;
 
-    if (is_wp_error($tmp)) {
-        $tmp_ok = false;
-    } else {
-        $info = @getimagesize($tmp);
-        if ($info === false || empty($info['mime']) || stripos($info['mime'], 'image/') !== 0) {
-            // No es imagen válida; borra y marca como fallo
-            @unlink($tmp);
-            $tmp_ok = false;
+    // --- SOLUCIÓN: Copiar el archivo localmente desde el disco si ya está en nuestro uploads ---
+    $upload_dir = wp_upload_dir();
+    $baseurl = $upload_dir['baseurl'];
+    $basedir = $upload_dir['basedir'];
+
+    if (strpos($imagen_url, $baseurl) === 0) {
+        // En vez de descargarlo, buscamos dónde está en el disco
+        $local_path = str_replace($baseurl, $basedir, $imagen_url);
+        if (file_exists($local_path)) {
+            $tmp = wp_tempnam($imagen_url);
+            // Copiamos el archivo al temporal directamente (sin red web, sin cortafuegos)
+            if (copy($local_path, $tmp)) {
+                $tmp_ok = true;
+                $info = @getimagesize($tmp);
+                if ($info === false) {
+                    $tmp_ok = false;
+                    @unlink($tmp);
+                }
+            }
         }
     }
 
-    // --- 2) Fallback con wp_remote_get y headers de navegador ---
+    // --- 1) Intento con download_url() (Si no era un archivo de nuestro propio servidor) ---
+    if (!$tmp_ok) {
+        $tmp = download_url($imagen_url);
+        if (!is_wp_error($tmp)) {
+            $tmp_ok = true;
+            $info = @getimagesize($tmp);
+            if ($info === false || empty($info['mime']) || stripos($info['mime'], 'image/') !== 0) {
+                @unlink($tmp);
+                $tmp_ok = false;
+            }
+        }
+    }
+
+    // --- 2) Fallback final con wp_remote_get y headers ---
     if (!$tmp_ok) {
         $args = [
             'timeout' => 20,
             'redirection' => 5,
             'headers' => [
-                'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+                'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
                 'Referer' => home_url('/'),
                 'Accept' => 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
-            ],
-            // Si el servidor remoto tiene SSL mal configurado, puedes probar:
-            // 'sslverify' => false, // No recomendado en producción
+            ]
         ];
         $response = wp_remote_get($imagen_url, $args);
 
-        if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
-            return false;
-        }
+        if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
+            $body = wp_remote_retrieve_body($response);
+            if (!empty($body)) {
+                $content_type = wp_remote_retrieve_header($response, 'content-type');
+                $is_image_header = is_string($content_type) && stripos($content_type, 'image/') === 0;
 
-        $body = wp_remote_retrieve_body($response);
-        if (empty($body)) {
-            return false;
-        }
-
-        // Valida por cabecera
-        $content_type = wp_remote_retrieve_header($response, 'content-type');
-        $is_image_header = is_string($content_type) && stripos($content_type, 'image/') === 0;
-
-        // Escribe a un tmp y valida por contenido real
-        $tmp = wp_tempnam($imagen_url);
-        if (!$tmp)
-            return false;
-
-        $bytes = file_put_contents($tmp, $body);
-        if ($bytes === false || $bytes === 0) {
-            @unlink($tmp);
-            return false;
-        }
-
-        $info = @getimagesize($tmp);
-        if ($info === false && !$is_image_header) {
-            @unlink($tmp);
-            return false;
-        }
-
-        // Si falta MIME, usa el de cabecera
-        if ($info === false && $is_image_header) {
-            $info = ['mime' => $content_type];
+                $tmp = wp_tempnam($imagen_url);
+                if ($tmp) {
+                    $bytes = file_put_contents($tmp, $body);
+                    if ($bytes !== false && $bytes !== 0) {
+                        $info = @getimagesize($tmp);
+                        if ($info !== false || $is_image_header) {
+                            $tmp_ok = true;
+                            if ($info === false)
+                                $info = ['mime' => $content_type];
+                        } else {
+                            @unlink($tmp);
+                        }
+                    }
+                }
+            }
         }
     }
 
-    // --- 3) Construye el file_array con nombre correcto ---
-    $mime = isset($info['mime']) ? strtolower($info['mime']) : 'image/jpeg';
-    $nombre_archivo = $resolver_nombre($imagen_url, $mime);
+    // Si fallan todos los métodos para obtener la imagen, abortamos
+    if (!$tmp_ok || !$tmp)
+        return false;
 
+    // --- 3) Generar nombre e información para registrar el adjunto ---
+    $mime = isset($info['mime']) ? strtolower($info['mime']) : 'image/jpeg';
     $file_array = [
-        'name' => $nombre_archivo,
+        'name' => $resolver_nombre($imagen_url, $mime),
         'tmp_name' => $tmp,
     ];
 
-    // --- 4) Sube y asigna ---
+    // --- 4) Registra en la librería de medios de WP formalmente ---
     $attach_id = media_handle_sideload($file_array, $post_id);
     if (is_wp_error($attach_id)) {
         @unlink($tmp);
         return false;
     }
 
+    // --- 5) ¡Se asigna finalmente como Imagen Destacada! ---
     set_post_thumbnail($post_id, $attach_id);
 
-    // ALT por defecto = título del post
+    // Si se puede, colocar el texto alternativo
     if ($post = get_post($post_id)) {
         update_post_meta($attach_id, '_wp_attachment_image_alt', sanitize_text_field($post->post_title));
     }
