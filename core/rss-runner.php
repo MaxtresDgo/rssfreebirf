@@ -93,8 +93,9 @@ function rss_admin_extractor_ejecutar_tarea($tarea)
 
         // Quita solo líneas de firma completas (ej. "Por Juan Pérez", "<p>Con información de EFE</p>").
         // Anclado al inicio de línea para no cortar palabras como "por", "jefe" o "jornada" dentro del texto.
+        // "Por" solo si le sigue un nombre propio y nada más: "Por ahora no hay detenidos." se queda.
         $contenido = preg_replace(
-            '/(^|>)\s*(Con información de|Por|Escrito por|Fuente|Redacción)\b[^\n<]{0,80}(?=<|$)/mu',
+            '/(^|>)[ \t]*(?:(?:Escrito por|Por)[ \t]+\p{Lu}[\p{L}.\'’-]*(?:[ \t]+(?:de|del|la|las|los|y|e|\p{Lu}[\p{L}.\'’-]*)){0,6}[ \t.]*|(?:Con información de|Fuente[ \t]*:|Redacción\b)[^\n<]{0,80})(?=<|$)/mu',
             '$1',
             $contenido_original
         );
