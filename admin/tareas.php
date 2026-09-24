@@ -43,20 +43,10 @@ function rss_admin_extractor_menu()
         'rss-gestionar-fuentes',
         'rss_admin_extractor_gestion_fuentes'
     );
-
-    // 4. Ajustes (API Key)
-    add_submenu_page(
-        'rss-admin-extractor',
-        'Ajustes',
-        'Ajustes',
-        'manage_options',
-        'rss-ajustes',
-        'rss_admin_extractor_ajustes'
-    );
 }
 
 add_action('admin_enqueue_scripts', function ($hook) {
-    if (!strpos($hook, 'rss-admin-extractor') && !strpos($hook, 'rss-gestionar-fuentes') && !strpos($hook, 'rss-listar-tareas') && !strpos($hook, 'rss-ajustes'))
+    if (!strpos($hook, 'rss-admin-extractor') && !strpos($hook, 'rss-gestionar-fuentes') && !strpos($hook, 'rss-listar-tareas'))
         return;
 
     wp_enqueue_style(
@@ -229,23 +219,4 @@ function rss_admin_extractor_gestion_fuentes()
     }
 
     include plugin_dir_path(__FILE__) . 'vistas/gestion-fuentes.php';
-}
-
-/**
- * PÁGINA 4: AJUSTES (API Key)
- */
-function rss_admin_extractor_ajustes()
-{
-    if (isset($_POST['guardar_ajustes'])) {
-        check_admin_referer('rss_ajustes_nonce');
-        if (!current_user_can('manage_options'))
-            return;
-
-        $api_key = sanitize_text_field($_POST['rss_mistral_api_key']);
-        update_option('rss_mistral_api_key', $api_key);
-        echo '<div class="flux-notification flux-success"><div class="flux-notification-content"><h4>Ajustes Guardados</h4><p>La API Key se ha actualizado correctamente.</p></div></div>';
-    }
-
-    $api_key = get_option('rss_mistral_api_key', '');
-    include plugin_dir_path(__FILE__) . 'vistas/ajustes.php';
 }

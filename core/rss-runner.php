@@ -16,7 +16,6 @@ function rss_admin_extractor_ejecutar_tarea($tarea)
         return "Error: " . $resp->get_error_message();
     }
 
-    require_once plugin_dir_path(__FILE__) . '../includes/ollama.php';
     require_once plugin_dir_path(__FILE__) . '../includes/imagen.php';
 
     $body = wp_remote_retrieve_body($resp);
@@ -46,6 +45,12 @@ function rss_admin_extractor_ejecutar_tarea($tarea)
 
     global $wpdb;
 
+    // Nombres de medios a ocultar: los del catálogo de fuentes + agencias comunes
+    $medios = array_merge(
+        (array) $wpdb->get_col("SELECT DISTINCT periodico FROM {$wpdb->prefix}rss_fuentes"),
+        ['EFE', 'Reuters', 'AP', 'AFP', 'Notimex', 'Europa Press', 'Infobae', 'Milenio', 'Reforma', 'La Jornada', 'El Universal']
+    );
+
     $importados = 0;
     $saltados = 0;
 
@@ -56,7 +61,9 @@ function rss_admin_extractor_ejecutar_tarea($tarea)
 
         if ($is_standard_rss) {
             $titulo_original = trim((string) ($n->title ?? ''));
-            $contenido_original = trim((string) ($n->description ?? $n->children('content', true)->encoded ?? ''));
+            // content:encoded trae el artículo completo; description suele ser solo un extracto
+            $completo = trim((string) $n->children('http://purl.org/rss/1.0/modules/content/')->encoded);
+            $contenido_original = $completo !== '' ? $completo : trim((string) $n->description);
             $imagen_url = '';
             $url_fuente = trim((string) ($n->link ?? ''));
             $autores = '';
@@ -84,23 +91,15 @@ function rss_admin_extractor_ejecutar_tarea($tarea)
             continue;
         }
 
-        // Limpieza básica previa para ayudar a la IA (eliminamos firmas y nombres de periódicos comunes)
-        $catalog = 'Crónica|Noventagrados|Netnoticias|Excélsior|Forbes|Marca|Unánimo|Universal|Jornada|SDP|Infobae|EFE|Reuters';
-        $contenido_original = preg_replace('/(Con información de|Por|Escrito por|Fuente:|Redacción|' . $catalog . '):?.*?\n/i', '', $contenido_original);
-        $contenido_original = trim($contenido_original);
-
-        // 🔥 REESCRITURA REAL
-        error_log("[RSS RUNNER] Iniciando reescritura para: " . substr($titulo_original, 0, 40));
-
-        $titulo = function_exists('reescribir_titulo_con_ollama')
-            ? reescribir_titulo_con_ollama($titulo_original)
-            : $titulo_original;
-
-        if (function_exists('reescribir_contenido_con_ollama')) {
-            $contenido = reescribir_contenido_con_ollama($contenido_original);
-        } else {
-            $contenido = $contenido_original;
-        }
+        // Quita solo líneas de firma completas (ej. "Por Juan Pérez", "<p>Con información de EFE</p>").
+        // Anclado al inicio de línea para no cortar palabras como "por", "jefe" o "jornada" dentro del texto.
+        $contenido = preg_replace(
+            '/(^|>)\s*(Con información de|Por|Escrito por|Fuente|Redacción)\b[^\n<]{0,80}(?=<|$)/mu',
+            '$1',
+            $contenido_original
+        );
+        $contenido = trim(rss_quitar_periodicos($contenido, $medios));
+        $titulo = trim(rss_quitar_periodicos($titulo_original, $medios));
 
         // Insertar post
         $post_id = wp_insert_post([
@@ -131,4 +130,41 @@ function rss_admin_extractor_ejecutar_tarea($tarea)
     $res = "Finalizado: $importados importados, $saltados saltados.";
     error_log("RSS RESULTADO: $res");
     return $res;
+}
+
+/**
+ * Quita atribuciones a medios: "(EFE)", "según El Universal", ", en entrevista con Excélsior,",
+ * "De acuerdo con Infobae, la ..." -> "La ...".
+ * ponytail: basado en reglas; una mención suelta sin frase de atribución ("Estudios Universal") se respeta a propósito.
+ */
+function rss_quitar_periodicos($texto, $medios)
+{
+    // Variantes sin acento ("Excelsior", "Cronica") y sin duplicados/vacíos
+    $sin_acento = str_replace(['á', 'é', 'í', 'ó', 'ú', 'Á', 'É', 'Í', 'Ó', 'Ú'], ['a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U'], $medios);
+    $medios = array_filter(array_unique(array_map('trim', array_merge($medios, $sin_acento))));
+    if (!$medios)
+        return $texto;
+
+    // Nombres más largos primero para que "La Jornada" gane sobre "Jornada"
+    usort($medios, fn($a, $b) => mb_strlen($b) - mb_strlen($a));
+    $n = implode('|', array_map(fn($m) => preg_quote($m, '/'), $medios));
+
+    // El nombre respeta mayúsculas (evita "marca", "universal", "crónica" como palabras comunes)
+    $medio = "(?i:(?:el |la )?(?:diario|periódico|periodico|revista|agencia|portal|sitio|medio|cadena) )?(?:El |La )?(?:$n)\b(?: (?:MX|México|Mexico|Deportes|Noticias|Digital))?";
+    $atrib = "(?i:según|de acuerdo con|de acuerdo a|con información de|informó|informa|reportó|reporta|publicó|publica|consignó|detalló|en entrevista con|en entrevista para|en declaraciones a|en declaraciones para|dijo a|declaró a|consultado por|citado por|vía)";
+
+    // "(EFE)", "(Reuters).-"
+    $texto = preg_replace("/\s*\((?:$n)\)(?:\s*\.?-)?/u", '', $texto);
+    // ", según X," / ", informó X." -> se elimina el inciso
+    $texto = preg_replace("/,\s*$atrib\s+$medio\s*(?:,|(?=[.;:]))/u", '', $texto);
+    // "Según X, la policía ..." al inicio de oración/párrafo -> "La policía ..."
+    $texto = preg_replace_callback(
+        "/(^|[.!?]\s+|>\s*)$atrib\s+$medio\s*,\s*(\p{L})/mu",
+        fn($m) => $m[1] . mb_strtoupper($m[2]),
+        $texto
+    );
+    // "... según X." sin coma
+    $texto = preg_replace("/\s+$atrib\s+$medio(?=\s*[.;:])/u", '', $texto);
+
+    return $texto;
 }

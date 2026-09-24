@@ -3,7 +3,7 @@ defined('ABSPATH') || exit;
 
 /*
 Plugin Name: RSS Admin Extractor
-Description: Extrae y publica noticias desde un feed RSS con imagen destacada, usando inteligencia artificial local (Ollama).
+Description: Extrae y publica noticias desde un feed RSS con imagen destacada.
 Version: 2.1
 Author: TuNombre
 */
@@ -11,7 +11,6 @@ Author: TuNombre
 define('RSS_ADMIN_EXTRACTOR_DIR', plugin_dir_path(__FILE__));
 
 require_once RSS_ADMIN_EXTRACTOR_DIR . 'includes/db.php';
-require_once RSS_ADMIN_EXTRACTOR_DIR . 'includes/ollama.php';
 require_once RSS_ADMIN_EXTRACTOR_DIR . 'includes/imagen.php';
 require_once RSS_ADMIN_EXTRACTOR_DIR . 'includes/cron.php';
 require_once RSS_ADMIN_EXTRACTOR_DIR . 'admin/tareas.php';
