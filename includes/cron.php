@@ -50,8 +50,11 @@ function rss_admin_extractor_ejecutar_todas_las_tareas()
         $debe_ejecutar = false;
 
         $hoy_str = $ahora->format('Y-m-d');
-        $transient_name = 'rss_t_ok_' . $tarea->id . '_' . $hoy_str;
-        if (get_transient($transient_name)) {
+        // "Ya se ejecutó hoy" se guarda como opción (base de datos), no como transient: los sitios comparten
+        // Redis y cada flush borraba los transients, así que las tareas se repetían varias veces al día.
+        // ponytail: el get_transient solo cubre marcas viejas del día del cambio; se puede quitar después.
+        $opcion_ok = 'rss_t_ok_' . $tarea->id;
+        if (get_option($opcion_ok) === $hoy_str || get_transient($opcion_ok . '_' . $hoy_str)) {
             continue; // Ya se ejecutó hoy
         }
 
@@ -83,7 +86,7 @@ function rss_admin_extractor_ejecutar_todas_las_tareas()
         if ($debe_ejecutar) {
             // Marcamos como ejecutado HOY inmediatamente ANTES de empezar el proceso pesado.
             // Esto evita que si el proceso tarda mucho o da timeout, el cron lo reinicie a los 5 min.
-            set_transient($transient_name, true, DAY_IN_SECONDS);
+            update_option($opcion_ok, $hoy_str, false);
 
             error_log("[RSS Cron] Ejecutando tarea ID: {$tarea->id} ({$tarea->nombre_tarea})");
             rss_admin_extractor_ejecutar_tarea($tarea);

@@ -38,6 +38,14 @@ function rss_admin_extractor_desactivar_plugin()
     }
 }
 
+// El cron solo se programaba al activar: si el plugin se actualiza copiando archivos (sin reactivar)
+// o el evento se pierde, las tareas dejan de correr en silencio. Se reprograma si falta.
+add_action('init', function () {
+    if (!wp_next_scheduled('rss_admin_extractor_verificar_hora')) {
+        wp_schedule_event(time(), 'cada_5_minutos', 'rss_admin_extractor_verificar_hora');
+    }
+});
+
 
 
 
